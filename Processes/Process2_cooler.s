@@ -1,3 +1,4 @@
+.option rvc
 .section .text
     .globl process2_start
 

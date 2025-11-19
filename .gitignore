@@ -1,1 +1,55 @@
+# Archivos compilados y ejecutables
+*.o
+*.out
+*.exe
+test_satelite
+satelite
+*.elf
+*.bin
+*.hex
+*.dump
+
+# Archivos temporales de compilación
+*.a
+*.so
+*.dylib
+*.elf
+
+# Archivos de depuración
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Archivos generados por editores
+*~
+*.swp
+*.swo
+*.bak
+.*.sw?
+.vscode/
 .idea/
+*.code-workspace
+
+# Archivos del sistema operativo
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Archivos de logs y resultados temporales
+*.log
+resultado.log
+
+# Archivos de prueba temporales
+test_runner_temp.c
+test2
+test3
+
+# Core dumps
+core
+core.*
+*.pdf

@@ -9,3 +9,5 @@ int cooling_state = 0;
 int *temps_ptr = 0;
 int temps_len = 0;
 int temps_index = 0;
+
+int current_scenario = 1;  // Por defecto se usa el Escenario 1

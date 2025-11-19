@@ -1,7 +1,7 @@
 #ifndef PCB_H
 #define PCB_H
 
-#include <stdint.h>
+#include "memory_map.h"
 
 struct PCB {
     uint32_t pc;

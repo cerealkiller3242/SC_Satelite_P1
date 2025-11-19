@@ -1,3 +1,4 @@
+.option rvc
 .section .text
 .globl process1_start
 
@@ -29,26 +30,26 @@ P1_loop:
     bgt t4, t6, P1_set_cooling
 
     # desactivar enfriamiento
-    li t7, 55
-    blt t4, t7, P1_clear_cooling
+    li t6, 55
+    blt t4, t6, P1_clear_cooling
 
     j P1_continue
 
 P1_set_cooling:
-    la t8, cooling_flag
-    li t9, 1
-    sw t9, 0(t8)
+    la t5, cooling_flag
+    li t6, 1
+    sw t6, 0(t5)
     j P1_continue
 
 P1_clear_cooling:
-    la t8, cooling_flag
-    sw zero, 0(t8)
+    la t5, cooling_flag
+    sw zero, 0(t5)
     j P1_continue
 
 P1_continue:
     # escribir en buffer UART (no imprimir)
-    la t9, uart_buffer
-    sw t4, 0(t9)
+    la t5, uart_buffer
+    sw t4, 0(t5)
 
     # incrementar índice
     la t0, temps_index
