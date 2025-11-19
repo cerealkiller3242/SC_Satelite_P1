@@ -1,4 +1,4 @@
-    .section .text
+.section .text
     .globl process2_start
 
 process2_start:
@@ -14,9 +14,9 @@ P2_loop:
     # si cooling_flag == 0 → estamos en cooling_off
     j P2_idle
 
-# =================================
+
 # ENFRIAMIENTO ACTIVADO
-# =================================
+
 P2_active:
     la t2, cooling_state
     li t3, 1
@@ -36,17 +36,12 @@ P2_monitor:
 
     j P2_loop
 
-# =================================
+
 # ENFRIAMIENTO APAGADO
-# =================================
+
 P2_idle:
     # estado interno
     la t2, cooling_state
     sw zero, 0(t2)
 
     j P2_loop
-
-
-.section .data
-cooling_flag: .word 0
-cooling_state: .word 0

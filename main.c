@@ -6,7 +6,7 @@ extern void kernel_start(int *temps, int len);
 int temps[500];
 
 int main() {
-    FILE *f = fopen("temperaturas.txt", "r");
+    FILE *f = fopen("temperaturas1.txt", "r");
     if (!f) {
         printf("No se pudo abrir temperaturas.txt\n");
         return 1;

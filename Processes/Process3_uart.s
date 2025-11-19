@@ -1,4 +1,4 @@
-    .section .text
+.section .text
     .globl process3_start
 
 process3_start:
@@ -17,8 +17,3 @@ P3_loop:
     sw zero, 0(t0)
 
     j P3_loop
-
-
-.section .data
-uart_buffer: .word 0
-uart_last: .word 0
