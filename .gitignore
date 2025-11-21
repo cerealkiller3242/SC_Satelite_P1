@@ -53,3 +53,5 @@ test3
 core
 core.*
 *.pdf
+*.dump
+*.exe

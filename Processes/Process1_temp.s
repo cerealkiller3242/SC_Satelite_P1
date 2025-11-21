@@ -7,6 +7,20 @@
 process1_start:
 
 P1_loop:
+    # Leer ciclos de CPU (Problema 3: rdcycle)
+    rdcycle t0
+    rdcycleh t1                # Upper 32 bits
+    la t2, cycle_count_p1
+    sw t0, 0(t2)               # Guardar low 32 bits
+    sw t1, 4(t2)               # Guardar high 32 bits
+    
+    # Verificar si quedan temperaturas por procesar
+    la t0, temps_index
+    lw t1, 0(t0)       # t1 = índice actual
+    la t2, temps_len
+    lw t3, 0(t2)       # t3 = longitud total
+    bge t1, t3, P1_idle    # Si index >= len, ir a idle
+    
     # cargar índice desde temps_index
     la t0, temps_index
     lw t0, 0(t0)       # índice
@@ -57,4 +71,11 @@ P1_continue:
     addi t1, t1, 1
     sw t1, 0(t0)
 
+    j P1_loop
+
+P1_idle:
+    # Todas las temperaturas procesadas, entrar en modo de espera
+    # WFI (Wait For Interrupt) ahorra energía
+    wfi
+    # Si se despierta por una interrupción, verificar si hay trabajo nuevo
     j P1_loop

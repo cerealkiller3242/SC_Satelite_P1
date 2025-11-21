@@ -11,13 +11,13 @@ LD = $(RISCV_PREFIX)ld
 OBJDUMP = $(RISCV_PREFIX)objdump
 
 # Flags
-CFLAGS = -Wall -g -O2 -march=rv32imac -mabi=ilp32 -static -nostdlib -nostartfiles
-ASFLAGS = -march=rv32imac -mabi=ilp32
+CFLAGS = -Wall -g -O2 -march=rv32imac_zicsr -mabi=ilp32 -static -nostdlib -nostartfiles
+ASFLAGS = -march=rv32imac_zicsr -mabi=ilp32
 LDFLAGS = -static -nostdlib -T linker.ld
 
 # Archivos fuente
 C_SOURCES = main_riscv.c kernel.c memory_map.c stacks.c
-ASM_SOURCES = start.s scheduler.s \
+ASM_SOURCES = start.s scheduler.s trap_handler.s \
               Processes/Process1_temp.s \
               Processes/Process2_cooler.s \
               Processes/Process3_uart.s
@@ -68,15 +68,50 @@ sim: $(TARGET)
 # EMULACIÓN EN C (con I/O interactivo)
 # =============================================================================
 interactive: wrapper_interactive.c memory_map.c
-	@echo "Compilando emulación C con I/O..."
-	gcc -Wall -g -pthread wrapper_interactive.c memory_map.c -o $(INTERACTIVE)
-	@echo "✓ Compilado: $(INTERACTIVE)"
+	@echo "Compilando emulación C con I/O y backtrace..."
+	gcc -Wall -g -rdynamic -pthread wrapper_interactive.c memory_map.c -o $(INTERACTIVE)
+	@echo "✓ Compilado: $(INTERACTIVE) (con símbolos de backtrace)"
 
 run: interactive
 	./$(INTERACTIVE)
 
 # =============================================================================
+# PERFORMANCE PROFILING (Problema 6)
+# =============================================================================
+
+# Compilar con profiling habilitado (gprof)
+profile: wrapper_interactive.c memory_map.c
+	@echo "Compilando con profiling (gprof)..."
+	gcc -Wall -g -pg -rdynamic -pthread wrapper_interactive.c memory_map.c -o $(INTERACTIVE)_prof
+	@echo "✓ Compilado: $(INTERACTIVE)_prof (con profiling)"
+	@echo ""
+	@echo "Para usar:"
+	@echo "  1. Ejecutar: ./$(INTERACTIVE)_prof"
+	@echo "  2. Analizar: gprof $(INTERACTIVE)_prof gmon.out > analysis.txt"
+	@echo "  3. Ver: cat analysis.txt"
+
+# Ejecutar profiling completo
+run-profile: profile
+	@echo "Ejecutando con profiling..."
+	./$(INTERACTIVE)_prof
+	@echo ""
+	@echo "Generando reporte de profiling..."
+	gprof $(INTERACTIVE)_prof gmon.out > gprof_report.txt
+	@echo "✓ Reporte generado: gprof_report.txt"
+	@echo ""
+	@head -50 gprof_report.txt
+
+# Análisis rápido (top 10 funciones)
+profile-top: gmon.out
+	@echo "Top 10 funciones por tiempo de CPU:"
+	@gprof -b $(INTERACTIVE)_prof gmon.out | grep -A 15 "Flat profile:" | tail -15
+
+# Limpiar archivos de profiling
+clean-profile:
+	rm -f gmon.out $(INTERACTIVE)_prof gprof_report.txt perf.data perf.data.old
+
+# =============================================================================
 # LIMPIEZA
 # =============================================================================
 clean:
-	rm -f *.o Processes/*.o $(TARGET) $(INTERACTIVE) *.elf.dump
+	rm -f *.o Processes/*.o $(TARGET) $(INTERACTIVE) $(INTERACTIVE)_prof *.elf.dump gmon.out gprof_report.txt perf.data perf.data.old

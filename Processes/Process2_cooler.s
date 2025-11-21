@@ -5,6 +5,20 @@
 process2_start:
 
 P2_loop:
+    # Leer ciclos de CPU (Problema 3: rdcycle)
+    rdcycle t0
+    rdcycleh t1                # Upper 32 bits
+    la t2, cycle_count_p2
+    sw t0, 0(t2)               # Guardar low 32 bits
+    sw t1, 4(t2)               # Guardar high 32 bits
+    
+    # Verificar si el sistema aún está procesando temperaturas
+    la t0, temps_index
+    lw t1, 0(t0)
+    la t2, temps_len
+    lw t3, 0(t2)
+    bge t1, t3, P2_done    # Si todas las temps procesadas, terminar
+    
     # leer flag de enfriamiento
     la t0, cooling_flag
     lw t1, 0(t0)
@@ -45,4 +59,10 @@ P2_idle:
     la t2, cooling_state
     sw zero, 0(t2)
 
+    j P2_loop
+
+P2_done:
+    # Trabajo terminado, entrar en espera
+    wfi
+    # Si se despierta, verificar si hay nuevo trabajo
     j P2_loop

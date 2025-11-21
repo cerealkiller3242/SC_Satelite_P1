@@ -3,6 +3,8 @@
     .globl _start
     .extern main
     .extern kernel_start
+    .extern trap_handler
+    .extern setup_timer
     .extern __bss_start
     .extern __bss_end
     .extern __stack_top
@@ -21,7 +23,26 @@ clear_bss:
     j clear_bss
 
 bss_done:
-    # Llamar a main
+    # =================================================================
+    # CONFIGURAR TRAP VECTOR (pero SIN habilitar interrupciones aún)
+    # =================================================================
+    
+    # 1. Configurar trap vector (mtvec) - modo directo
+    la t0, trap_handler
+    csrw mtvec, t0
+    
+    # 2. Configurar MIE para timer (pero sin habilitar globalmente aún)
+    li t0, 0x80                 # bit 7 = Machine Timer Interrupt Enable
+    csrw mie, t0                # csrw (no csrs) para evitar habilitar otros bits
+    
+    # NOTA: NO habilitamos MSTATUS.MIE todavía
+    # El scheduler_start habilitará las interrupciones cuando esté listo
+    
+    # =================================================================
+    # INICIAR SISTEMA
+    # =================================================================
+    
+    # Llamar a main (esto llama a kernel_start, que llama a scheduler_start)
     call main
     
     # Si main retorna, loop infinito

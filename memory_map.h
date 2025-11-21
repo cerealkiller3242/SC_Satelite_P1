@@ -18,6 +18,32 @@ extern int temps_index;
 // Variable para seleccionar el escenario del scheduler
 extern int current_scenario;
 
+// =============================================================================
+// MÉTRICAS DE DEBUGGING (Problema 3)
+// =============================================================================
+
+// Ciclos de CPU por proceso (rdcycle)
+extern unsigned long long cycle_count_p1;
+extern unsigned long long cycle_count_p2;
+extern unsigned long long cycle_count_p3;
+
+// PC y SP capturados en cada interrupción
+extern unsigned int last_pc_p1;
+extern unsigned int last_pc_p2;
+extern unsigned int last_pc_p3;
+
+extern unsigned int last_sp_p1;
+extern unsigned int last_sp_p2;
+extern unsigned int last_sp_p3;
+
+// Contador de interrupciones por proceso
+extern unsigned int interrupt_count_p1;
+extern unsigned int interrupt_count_p2;
+extern unsigned int interrupt_count_p3;
+
+// Última causa de trap (mcause)
+extern unsigned int last_mcause;
+
 #define STACK_SIZE 512
 
 // IDs de los procesos
