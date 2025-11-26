@@ -1,33 +1,209 @@
-# 🛰️ Sistema de Control de Satélite - RISC-V Assembly
+# SC_Satelite_P1 - Ejecución Manual
 
-Sistema de control de temperatura para satélite implementado en **RISC-V Assembly (RV32IMAC_Zicsr)** con multitarea preemptiva mediante interrupciones de timer.
+
+
+timeout 3 qemu-system-riscv32 -machine virt -m 128M -serial stdio -display none -kernel satelite.elf -monitor none 2>&1 > /tmp/riscv_output.txt 2>&1; cat /tmp/riscv_output.txt
+
+
+## 📋 Descripción
+
+Sistema de schedulling preemptivo con 3 procesos (P1, P2, P3) ejecutados en RISC-V sobre QEMU con OpenSBI.
+
+- **P1**: Lee temperaturas y controla el cooling flag
+- **P2**: Monitorea el estado del cooling  
+- **P3**: Supervisa el buffer UART
+
+## 🎯 Los 4 Escenarios
+
+| Escenario | Orden | Descripción |
+|-----------|-------|------------|
+| **S1** | P1→P2→P3 | Baseline (procesamiento secuencial) |
+| **S2** | P1→P3→P2 | Orden diferente |
+| **S3** | P2→P1→P3 | Inicio diferente |
+| **S4** | P1→P2→P3 | Con syscalls |
+
+## ⚙️ Requisitos Previos
+
+```bash
+# RISC-V toolchain
+riscv32-linux-gnu-as
+riscv32-linux-gnu-ld
+riscv32-linux-gnu-objcopy
+
+# QEMU
+qemu-system-riscv32
+
+# OpenSBI (incluido en distribución)
+/usr/share/opensbi/generic/firmware/fw_payload.elf
+```
+
+## 🚀 Ejecución Manual
+
+### Opción 1: Compilar y Ejecutar Directamente
+
+```bash
+cd /home/cerealkiller/Documentos/SC_Satelite_P1
+
+# Compilar Scenario 1
+make SCENARIO=1 baremetal
+
+# Ejecutar en QEMU (5 segundos de timeout)
+timeout 5 qemu-system-riscv32 -machine virt -nographic -bios default -kernel satelite.elf
+```
+
+### Opción 2: Compilar Todos los Escenarios
+
+```bash
+cd /home/cerealkiller/Documentos/SC_Satelite_P1
+
+# Compilar Scenario 2
+make SCENARIO=2 baremetal
+timeout 5 qemu-system-riscv32 -machine virt -nographic -bios default -kernel satelite.elf
+
+# Compilar Scenario 3
+make SCENARIO=3 baremetal
+timeout 5 qemu-system-riscv32 -machine virt -nographic -bios default -kernel satelite.elf
+
+# Compilar Scenario 4
+make SCENARIO=4 baremetal
+timeout 5 qemu-system-riscv32 -machine virt -nographic -bios default -kernel satelite.elf
+```
+
+### Opción 3: Limpiar y Compilar Nuevamente
+
+```bash
+cd /home/cerealkiller/Documentos/SC_Satelite_P1
+
+# Limpiar archivos compilados
+make clean
+
+# Compilar un escenario específico
+make SCENARIO=1 baremetal
+
+# Ejecutar
+timeout 5 qemu-system-riscv32 -machine virt -nographic -bios default -kernel satelite.elf
+```
+
+## � Output Esperado
+
+### Durante la Ejecución
+
+El programa mostrará el flujo de ejecución con:
+
+```
+START
+[SCH] 1
+P1_S
+[COFF] T[00] [CoFF] T=45 
+[COFF] T[01] [CoFF] T=48
+[COFF] T[02] [CoFF] T=52
+...
+P1D
+P2D
+P3D
+[DONE]
+```
+
+**Significado:**
+- `START` - Inicio del programa
+- `[SCH] N` - Scheduler seleccionó Scenario N
+- `P1_S`, `P2_S`, `P3_S` - Proceso iniciado
+- `P1D`, `P2D`, `P3D` - Proceso terminado
+- `[COFF]` / `[CON]` - Estado del cooling (OFF/ON)
+- `[CoFF]` / `[CoON]` - Estado mostrado por P2
+- `T[XX]` - Número de temperatura procesada
+- `T=XX` - Valor actual de temperatura
+- `[DONE]` - Todos los procesos finalizados
+
+### Al Final
+
+```
+===
+Tiempo Total: 0x015C0012
+===
+```
+
+Esto muestra el **tiempo total en ciclos** en formato hexadecimal.
+
+- `0x015C0012` = 22,929,426 ciclos (en decimal)
+- Cada escenario puede tener un tiempo diferente según el scheduling
+
+## 🔧 Makefile
+
+El `Makefile` usa:
+
+```makefile
+make SCENARIO=1 baremetal   # Compila Scenario 1
+make SCENARIO=2 baremetal   # Compila Scenario 2
+make SCENARIO=3 baremetal   # Compila Scenario 3
+make SCENARIO=4 baremetal   # Compila Scenario 4
+make clean                   # Limpia archivos .o y .elf
+```
+
+## 📁 Estructura de Archivos
+
+```
+/home/cerealkiller/Documentos/SC_Satelite_P1/
+├── main_riscv.c              # Punto de entrada (referencias de variables)
+├── scheduler_scenarios.s      # Scheduler y los 4 escenarios
+├── processes_sbi.s            # Procesos P1, P2, P3
+├── kernel_main.s              # Kernel en assembly
+├── Makefile                   # Sistema de build
+├── memory_map.h               # Mapa de memoria
+├── tests/                     # Archivos de prueba
+└── Processes/                 # Implementaciones originales de procesos
+```
+
+## 🐛 Troubleshooting
+
+### Error: "satelite.elf not found"
+```bash
+# Asegurate de compilar primero
+make SCENARIO=1 baremetal
+```
+
+### QEMU se queda colgado
+```bash
+# Usar timeout para evitar que se cuelgue indefinidamente
+timeout 5 qemu-system-riscv32 -machine virt -nographic -bios default -kernel satelite.elf
+
+# O presionar Ctrl+C manualmente
+```
+
+### Compilación falla
+```bash
+# Limpiar y reintentar
+make clean
+make SCENARIO=1 baremetal
+
+# Verificar que riscv32-linux-gnu-as esté disponible
+which riscv32-linux-gnu-as
+```
+
+## 📈 Comparación de Escenarios
+
+Para comparar el rendimiento de los 4 escenarios:
+
+```bash
+# Script para ejecutar todos
+for s in 1 2 3 4; do
+    echo "=== Scenario $s ==="
+    make SCENARIO=$s baremetal > /dev/null 2>&1
+    timeout 5 qemu-system-riscv32 -machine virt -nographic -bios default -kernel satelite.elf 2>&1 | grep "Tiempo Total"
+    echo ""
+done
+```
+
+## 📝 Notas
+
+- El sistema usa **rdcycle** para medir ciclos de CPU
+- Cada proceso se ejecuta de forma **preemptiva** (yield después de cada operación)
+- Se procesan **100 temperaturas** en cada escenario
+- El tiempo mostrado es en ciclos hexadecimales, no en tiempo real
 
 ---
 
-## 📋 Tabla de Contenidos
-
-- [Descripción](#-descripción)
-- [Problemas Resueltos](#-problemas-resueltos)
-- [Arquitectura](#️-arquitectura)
-- [Compilación y Ejecución](#-compilación-y-ejecución)
-- [Debugging](#-debugging)
-- [Estructura del Proyecto](#-estructura-del-proyecto)
-- [Documentación Adicional](#-documentación-adicional)
-
----
-
-## 📖 Descripción
-
-Este proyecto implementa un **sistema bare-metal** en RISC-V para controlar la temperatura de un satélite. El sistema gestiona tres procesos concurrentes que interactúan a través de variables compartidas en memoria:
-
-1. **Process1_temp** (`Process1_temp.s`): Lee temperaturas del array y actualiza `temp_actual`
-2. **Process2_cooler** (`Process2_cooler.s`): Monitorea la temperatura y controla el sistema de enfriamiento
-3. **Process3_uart** (`Process3_uart.s`): Transmite datos de temperatura a través de un buffer UART simulado
-
-### Características Clave
-
-- ✅ **Multitarea preemptiva**: Timer interrupts cada 10,000 ciclos
-- ✅ **Context switching completo**: 32 registros + PC + SP guardados en PCB
+**Última actualización:** 26 de noviembre de 2025
 - ✅ **Sin syscalls**: Interrupciones puras de hardware (MTIMECMP/MTIME)
 - ✅ **Terminación WFI**: Los procesos entran en `wfi` cuando terminan su trabajo
 - ✅ **3 escenarios**: Diferentes órdenes de ejecución de procesos

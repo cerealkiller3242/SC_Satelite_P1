@@ -10,17 +10,28 @@ AS = $(RISCV_PREFIX)as
 LD = $(RISCV_PREFIX)ld
 OBJDUMP = $(RISCV_PREFIX)objdump
 
+# Default scenario if not specified
+SCENARIO ?= 1
+
+# Default temperature set if not specified
+TEMPERATURAS_SET ?= 1
+
 # Flags
-CFLAGS = -Wall -g -O2 -march=rv32imac_zicsr -mabi=ilp32 -static -nostdlib -nostartfiles
+CFLAGS = -Wall -g -O2 -march=rv32imac_zicsr -mabi=ilp32 -static -nostdlib -nostartfiles -DSCENARIO=$(SCENARIO) -DTEMPERATURAS_SET=$(TEMPERATURAS_SET)
 ASFLAGS = -march=rv32imac_zicsr -mabi=ilp32
 LDFLAGS = -static -nostdlib -T linker.ld
 
 # Archivos fuente
 C_SOURCES = main_riscv.c kernel.c memory_map.c stacks.c
-ASM_SOURCES = start.s scheduler.s trap_handler.s \
-              Processes/Process1_temp.s \
-              Processes/Process2_cooler.s \
-              Processes/Process3_uart.s
+
+# Seleccionar archivos ASM según SCENARIO
+ifeq ($(SCENARIO),4)
+    # Escenario 4: Archivos separados con syscalls
+    ASM_SOURCES = start.s sbi_console.s scheduler_scenarios_s4.s processes_sbi_s4.s
+else
+    # Escenarios 1-3: Archivos estándar con interrupciones
+    ASM_SOURCES = start.s sbi_console.s scheduler_scenarios.s processes_sbi.s
+endif
 
 # Objetos
 C_OBJECTS = $(C_SOURCES:.c=.o)
@@ -30,10 +41,46 @@ ASM_OBJECTS = $(ASM_SOURCES:.s=.o)
 TARGET = satelite.elf
 INTERACTIVE = satelite_interactive
 
-.PHONY: all baremetal interactive run dump sim clean
+.PHONY: all baremetal interactive run dump sim clean help
 
-# Por defecto: versión interactiva
-all: interactive
+# Help target
+help:
+	@echo "╔═══════════════════════════════════════════════════════════╗"
+	@echo "║   SC_Satelite_P1 - Makefile Help                          ║"
+	@echo "╚═══════════════════════════════════════════════════════════╝"
+	@echo ""
+	@echo "COMPILACIÓN RISC-V BAREMETAL:"
+	@echo "  make baremetal                  # Compilar con defaults"
+	@echo "  make SCENARIO=1 baremetal       # Escenario 1 (P1→P2→P3)"
+	@echo "  make SCENARIO=2 baremetal       # Escenario 2 (P1→P3→P2)"
+	@echo "  make SCENARIO=3 baremetal       # Escenario 3 (P2→P1→P3)"
+	@echo "  make SCENARIO=4 baremetal       # Escenario 4 (Syscalls)"
+	@echo ""
+	@echo "TEMPERATURA:"
+	@echo "  make TEMPERATURAS_SET=1 baremetal  # SET1: Órbita LEO"
+	@echo "  make TEMPERATURAS_SET=2 baremetal  # SET2: Aleatorio"
+	@echo "  make TEMPERATURAS_SET=3 baremetal  # SET3: Constante 75°C"
+	@echo "  make TEMPERATURAS_SET=4 baremetal  # SET4: Rango lineal"
+	@echo ""
+	@echo "EJEMPLO COMBINADO:"
+	@echo "  make SCENARIO=2 TEMPERATURAS_SET=2 baremetal"
+	@echo ""
+	@echo "EMULACIÓN C (x86_64):"
+	@echo "  make interactive                # Compilar emulación"
+	@echo "  ./satelite_interactive          # Ejecutar (interactivo)"
+	@echo "  echo -e '1\\n1' | ./satelite_interactive  # Automático"
+	@echo ""
+	@echo "QEMU:"
+	@echo "  make sim                        # Ejecutar en QEMU"
+	@echo ""
+	@echo "UTILIDADES:"
+	@echo "  make clean                      # Limpiar objetos"
+	@echo "  make dump                       # Desensamblado"
+	@echo "  make help                       # Esta ayuda"
+	@echo ""
+
+# Por defecto: mostrar ayuda
+all: help
 
 # =============================================================================
 # RISC-V BARE-METAL (sin I/O, configuración fija)
@@ -49,9 +96,6 @@ $(TARGET): $(C_OBJECTS) $(ASM_OBJECTS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 %.o: %.s
-	$(AS) $(ASFLAGS) $< -o $@
-
-Processes/%.o: Processes/%.s
 	$(AS) $(ASFLAGS) $< -o $@
 
 # Desensamblado
@@ -114,4 +158,4 @@ clean-profile:
 # LIMPIEZA
 # =============================================================================
 clean:
-	rm -f *.o Processes/*.o $(TARGET) $(INTERACTIVE) $(INTERACTIVE)_prof *.elf.dump gmon.out gprof_report.txt perf.data perf.data.old
+	rm -f *.o Processes/*.o Processes/Scenario4/*.o $(TARGET) $(INTERACTIVE) $(INTERACTIVE)_prof *.elf.dump gmon.out gprof_report.txt perf.data perf.data.old

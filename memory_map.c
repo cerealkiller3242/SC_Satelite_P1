@@ -1,5 +1,6 @@
 #include "memory_map.h"
 
+// Estado de temperatura y sistemas
 int temp_actual = 0;
 int cooling_flag = 0;
 int uart_buffer = 0;
@@ -21,19 +22,17 @@ unsigned long long cycle_count_p1 = 0;
 unsigned long long cycle_count_p2 = 0;
 unsigned long long cycle_count_p3 = 0;
 
-// PC y SP capturados en cada interrupción
-unsigned int last_pc_p1 = 0;
-unsigned int last_pc_p2 = 0;
-unsigned int last_pc_p3 = 0;
-
-unsigned int last_sp_p1 = 0;
-unsigned int last_sp_p2 = 0;
-unsigned int last_sp_p3 = 0;
-
 // Contador de interrupciones por proceso
 unsigned int interrupt_count_p1 = 0;
 unsigned int interrupt_count_p2 = 0;
 unsigned int interrupt_count_p3 = 0;
 
-// Última causa de trap (mcause)
-unsigned int last_mcause = 0;
+// Contadores globales de eventos
+unsigned long total_interrupts = 0;
+unsigned long total_context_switches = 0;
+unsigned long total_syscalls = 0;
+
+// Timing - Ciclos CPU
+unsigned long long cycle_start = 0;
+unsigned long long cycle_end = 0;
+unsigned long long total_cycles = 0;

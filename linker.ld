@@ -7,12 +7,12 @@ ENTRY(_start)
 
 MEMORY
 {
-    RAM (rwx) : ORIGIN = 0x80000000, LENGTH = 128M
+    RAM (rwx) : ORIGIN = 0x80200000, LENGTH = 128M
 }
 
 SECTIONS
 {
-    . = 0x80000000;
+    . = 0x80200000;
     
     .text : {
         *(.text._start)
@@ -40,5 +40,7 @@ SECTIONS
         __bss_end = .;
     } > RAM
     
-    __stack_top = ORIGIN(RAM) + LENGTH(RAM);
+    /* Stack begins right after BSS */
+    . = ALIGN(4096);
+    __stack_top = .;
 }
