@@ -1,1002 +1,534 @@
-# SC_Satelite_P1 - Ejecución Manual
+# SC_Satelite_P1 - Sistema de Control Térmico de Satélite en RISC-V
 
+**Proyecto de Scheduling Preemptivo con 3 Procesos Concurrentes en Arquitectura RISC-V 32-bit**
 
+---
 
-timeout 3 qemu-system-riscv32 -machine virt -m 128M -serial stdio -display none -kernel satelite.elf -monitor none 2>&1 > /tmp/riscv_output.txt 2>&1; cat /tmp/riscv_output.txt
+## 📋 Descripción General
 
+Este proyecto implementa un **sistema de scheduling preemptivo** en arquitectura RISC-V emulado en QEMU, que simula el control térmico de un satélite en órbita. El sistema ejecuta **3 procesos independientes** de forma concurrente mediante interrupciones de timer hardware (round-robin con quantum de 10,000 ciclos), demostrando conceptos fundamentales de sistemas operativos embebidos.
 
-## 📋 Descripción
+### Características Principales
 
-Sistema de schedulling preemptivo con 3 procesos (P1, P2, P3) ejecutados en RISC-V sobre QEMU con OpenSBI.
+- ✅ **3 procesos concurrentes** (P1, P2, P3) con sincronización de datos compartidos
+- ✅ **Scheduling preemptivo round-robin** basado en interrupciones de timer
+- ✅ **4 escenarios diferentes** que varían el orden de ejecución
+- ✅ **Escenario 4 con syscalls** para emular llamadas al sistema
+- ✅ **Compilación RISC-V baremetal** sin depender del kernel Linux
+- ✅ **Ejecución en QEMU** con output via UART/SBI
 
-- **P1**: Lee temperaturas y controla el cooling flag
-- **P2**: Monitorea el estado del cooling  
-- **P3**: Supervisa el buffer UART
+---
 
-## 🎯 Los 4 Escenarios
+## 🎯 Los 3 Procesos del Sistema
 
-| Escenario | Orden | Descripción |
-|-----------|-------|------------|
-| **S1** | P1→P2→P3 | Baseline (procesamiento secuencial) |
-| **S2** | P1→P3→P2 | Orden diferente |
-| **S3** | P2→P1→P3 | Inicio diferente |
-| **S4** | P1→P2→P3 | Con syscalls |
+### **Proceso 1 (P1): Lectura de Temperaturas**
+```
+Responsabilidad: Monitorear sensores térmicos del satélite
 
-## ⚙️ Requisitos Previos
+Acciones:
+  1. Lee temperatura[i] del array
+  2. Compara con umbrales:
+     - Si T > 90°C  → cooling_flag = 1 (ACTIVO)
+     - Si T < 55°C  → cooling_flag = 0 (INACTIVO)
+  3. Imprime: "P1: [CON] T=XX°C" o "P1: [COFF] T=XX°C"
+  4. Incrementa temps_index
+  5. Se repite 100 veces (una temperatura por interrupción)
 
-```bash
-# RISC-V toolchain
-riscv32-linux-gnu-as
-riscv32-linux-gnu-ld
-riscv32-linux-gnu-objcopy
-
-# QEMU
-qemu-system-riscv32
-
-# OpenSBI (incluido en distribución)
-/usr/share/opensbi/generic/firmware/fw_payload.elf
 ```
 
-## 🚀 Ejecución Manual
+### **Proceso 2 (P2): Monitoreo del Sistema de Enfriamiento**
+```
+Responsabilidad: Supervisar el estado del cooling
 
-### Opción 1: Compilar y Ejecutar Directamente
+Acciones:
+  1. Lee cooling_flag (escrito por P1)
+  2. Verifica estado actual del cooler
+  3. Imprime: "P2: COOLER [ON]" o "P2: COOLER [OFF]"
+  4. Registra cambios de estado
+
+Sincronización: Depende del P1
+```
+
+### **Proceso 3 (P3): Supervisión de Buffer UART**
+```
+Responsabilidad: Gestionar comunicación serial
+
+Acciones:
+  1. Monitorea el estado del buffer UART
+  2. Chequea si hay datos disponibles
+  3. Registra último dato recibido
+  4. Imprime: "P3: UART recibido..."
+
+Característica: Crítico para comunicación
+```
+
+---
+
+## 🎪 Los 4 Escenarios de Scheduling
+
+| # | Nombre | Orden | Descripción | Caso de Uso |
+|---|--------|-------|-------------|------------|
+| **S1** | Baseline | P1→P2→P3 | Orden secuencial natural | Caso base de comparación |
+| **S2** | Alt. Orden 1 | P1→P3→P2 | UART antes que monitoring | Cuando telemetría es crítica |
+| **S3** | Alt. Orden 2 | P2→P1→P3 | Monitoring primero | Cuando estado previo es importante |
+| **S4** | Con Syscalls | P1→P2→P3 + ECALL | Syscalls integradas | Emular OS real con interrupciones |
+
+### Diferencia S1-S3 vs S4
+
+```
+ESCENARIOS 1-3 (Flujo Normal):
+Scheduler → [Restaurar contexto] → [Ejecutar proceso] → Interrupt → Switch
+
+ESCENARIO 4 (Con Syscalls):
+Scheduler → [Restaurar contexto] → [ECALL] → [dispatcher] → [Ejecutar] → Interrupt → Switch
+```
+
+
+---
+
+## 🛠️ Requisitos Previos
+
+### 1. Toolchain RISC-V 32-bit
 
 ```bash
-cd /home/cerealkiller/Documentos/SC_Satelite_P1
+# En Debian/Ubuntu:
+sudo apt-get install gcc-riscv64-linux-gnu binutils-riscv64-linux-gnu
 
-# Compilar Scenario 1
+# O instalar riscv32 específicamente:
+sudo apt-get install gcc-riscv32-linux-gnu binutils-riscv32-linux-gnu
+```
+
+**Verificar instalación:**
+```bash
+riscv32-linux-gnu-gcc --version
+riscv32-linux-gnu-as --version
+riscv32-linux-gnu-ld --version
+```
+
+### 2. QEMU System Emulator
+
+```bash
+# En Debian/Ubuntu:
+sudo apt-get install qemu-system-riscv32
+
+# Verificar:
+qemu-system-riscv32 --version
+```
+
+### 3. Utilidades (opcional pero recomendado)
+
+```bash
+# Para desensamblado y análisis:
+sudo apt-get install binutils
+
+# Para profiling:
+sudo apt-get install linux-tools-generic
+```
+
+---
+
+## 🚀 Cómo Ejecutar el Proyecto
+
+### Opción 1: Compilación Rápida de un Escenario
+
+```bash
+cd /c/Users/cerea/OneDrive/Documentos/SC_Satelite_P1
+
+# Compilar Escenario 1 (S1: P1→P2→P3)
 make SCENARIO=1 baremetal
 
-# Ejecutar en QEMU (5 segundos de timeout)
-timeout 5 qemu-system-riscv32 -machine virt -nographic -bios default -kernel satelite.elf
+# Ejecutar con timeout de 3 segundos
+timeout 3 qemu-system-riscv32 -machine virt -m 128M -serial stdio \
+  -display none -kernel satelite.elf -monitor none 2>&1 > /tmp/riscv_output.txt
+
+# Ver el output
+cat /tmp/riscv_output.txt
 ```
 
-### Opción 2: Compilar Todos los Escenarios
+### Opción 2: Compilar y Ejecutar Todos los Escenarios
 
 ```bash
-cd /home/cerealkiller/Documentos/SC_Satelite_P1
+cd /c/Users/cerea/OneDrive/Documentos/SC_Satelite_P1
 
-# Compilar Scenario 2
+# Escenario 1
+make SCENARIO=1 baremetal
+timeout 3 qemu-system-riscv32 -machine virt -m 128M -serial stdio \
+  -display none -kernel satelite.elf -monitor none 2>&1 > /tmp/s1_output.txt
+echo "=== ESCENARIO 1 ===" && cat /tmp/s1_output.txt
+
+# Escenario 2
 make SCENARIO=2 baremetal
-timeout 5 qemu-system-riscv32 -machine virt -nographic -bios default -kernel satelite.elf
+timeout 3 qemu-system-riscv32 -machine virt -m 128M -serial stdio \
+  -display none -kernel satelite.elf -monitor none 2>&1 > /tmp/s2_output.txt
+echo "=== ESCENARIO 2 ===" && cat /tmp/s2_output.txt
 
-# Compilar Scenario 3
+# Escenario 3
 make SCENARIO=3 baremetal
-timeout 5 qemu-system-riscv32 -machine virt -nographic -bios default -kernel satelite.elf
+timeout 3 qemu-system-riscv32 -machine virt -m 128M -serial stdio \
+  -display none -kernel satelite.elf -monitor none 2>&1 > /tmp/s3_output.txt
+echo "=== ESCENARIO 3 ===" && cat /tmp/s3_output.txt
 
-# Compilar Scenario 4
+# Escenario 4 (con syscalls)
 make SCENARIO=4 baremetal
-timeout 5 qemu-system-riscv32 -machine virt -nographic -bios default -kernel satelite.elf
+timeout 3 qemu-system-riscv32 -machine virt -m 128M -serial stdio \
+  -display none -kernel satelite.elf -monitor none 2>&1 > /tmp/s4_output.txt
+echo "=== ESCENARIO 4 ===" && cat /tmp/s4_output.txt
 ```
 
-### Opción 3: Limpiar y Compilar Nuevamente
+### Opción 3: Compilar con Diferentes Sets de Temperaturas
 
 ```bash
-cd /home/cerealkiller/Documentos/SC_Satelite_P1
+# SET1: Órbita LEO realista (defecto)
+make SCENARIO=1 TEMPERATURAS_SET=1 baremetal
+timeout 3 qemu-system-riscv32 -machine virt -m 128M -serial stdio \
+  -display none -kernel satelite.elf -monitor none
+
+# SET2: Valores aleatorios
+make SCENARIO=1 TEMPERATURAS_SET=2 baremetal
+timeout 3 qemu-system-riscv32 -machine virt -m 128M -serial stdio \
+  -display none -kernel satelite.elf -monitor none
+
+# SET3: Temperatura constante 75°C
+make SCENARIO=1 TEMPERATURAS_SET=3 baremetal
+timeout 3 qemu-system-riscv32 -machine virt -m 128M -serial stdio \
+  -display none -kernel satelite.elf -monitor none
+
+# SET4: Rango lineal (0-100°C)
+make SCENARIO=1 TEMPERATURAS_SET=4 baremetal
+timeout 3 qemu-system-riscv32 -machine virt -m 128M -serial stdio \
+  -display none -kernel satelite.elf -monitor none
+```
+
+### Opción 4: Limpiar y Recompilar Todo
+
+```bash
+cd /c/Users/cerea/OneDrive/Documentos/SC_Satelite_P1
 
 # Limpiar archivos compilados
 make clean
 
-# Compilar un escenario específico
+# Compilar Escenario 1
 make SCENARIO=1 baremetal
 
 # Ejecutar
-timeout 5 qemu-system-riscv32 -machine virt -nographic -bios default -kernel satelite.elf
+timeout 3 qemu-system-riscv32 -machine virt -m 128M -serial stdio \
+  -display none -kernel satelite.elf -monitor none
 ```
 
-## � Output Esperado
+### Opción 5: Compilar un Escenario Combinado
 
-### Durante la Ejecución
+```bash
+# Escenario 2 con SET de temperaturas 3
+make SCENARIO=2 TEMPERATURAS_SET=3 baremetal
+timeout 3 qemu-system-riscv32 -machine virt -m 128M -serial stdio \
+  -display none -kernel satelite.elf -monitor none
+```
 
-El programa mostrará el flujo de ejecución con:
+---
+
+## 📊 Output Esperado
+
+### Estructura del Output
 
 ```
+KERNEL:S
 START
-[SCH] 1
+[SCH] ESCENARIO_NUMBER
 P1_S
-[COFF] T[00] [CoFF] T=45 
-[COFF] T[01] [CoFF] T=48
-[COFF] T[02] [CoFF] T=52
+[CON] T[00] [CON] T=92
+[COFF] T[01] [COFF] T=45
+[CON] T[02] [CON] T=78
 ...
 P1D
+P2_S
+P2: Temperature=45, Cooler OFF
+...
 P2D
+P3_S
+P3: UART Status=0x00
+...
 P3D
-[DONE]
+FINISH
 ```
 
-**Significado:**
-- `START` - Inicio del programa
-- `[SCH] N` - Scheduler seleccionó Scenario N
-- `P1_S`, `P2_S`, `P3_S` - Proceso iniciado
-- `P1D`, `P2D`, `P3D` - Proceso terminado
-- `[COFF]` / `[CON]` - Estado del cooling (OFF/ON)
-- `[CoFF]` / `[CoON]` - Estado mostrado por P2
-- `T[XX]` - Número de temperatura procesada
-- `T=XX` - Valor actual de temperatura
-- `[DONE]` - Todos los procesos finalizados
+### Interpretación
 
-### Al Final
+| Símbolo | Significado |
+|---------|-------------|
+| `KERNEL:S` | Kernel iniciado y configurado |
+| `[SCH] N` | Scheduler seleccionó escenario N |
+| `P1_S` | Proceso 1 comenzó |
+| `[CON] T=XX` | Cooling activado a temperatura XX°C |
+| `[COFF] T=XX` | Cooling desactivado a temperatura XX°C |
+| `P1D` | Proceso 1 terminó (100 temperaturas procesadas) |
+| `P2_S` / `P2D` | Proceso 2 comenzó/terminó |
+| `P3_S` / `P3D` | Proceso 3 comenzó/terminó |
+| `FINISH` | Sistema completó toda la ejecución |
 
-```
-===
-Tiempo Total: 0x015C0012
-===
-```
+---
 
-Esto muestra el **tiempo total en ciclos** en formato hexadecimal.
+## 🔍 Flags de Compilación
 
-- `0x015C0012` = 22,929,426 ciclos (en decimal)
-- Cada escenario puede tener un tiempo diferente según el scheduling
+El Makefile soporta las siguientes variables:
 
-## 🔧 Makefile
+```bash
+SCENARIO      # Escenario a ejecutar (1, 2, 3, o 4)
+              # Default: 1
 
-El `Makefile` usa:
+TEMPERATURAS_SET  # Set de temperaturas a usar (1, 2, 3, o 4)
+                  # Default: 1
 
-```makefile
-make SCENARIO=1 baremetal   # Compila Scenario 1
-make SCENARIO=2 baremetal   # Compila Scenario 2
-make SCENARIO=3 baremetal   # Compila Scenario 3
-make SCENARIO=4 baremetal   # Compila Scenario 4
-make clean                   # Limpia archivos .o y .elf
+CFLAGS        # -march=rv32imac_zicsr -mabi=ilp32 -static -nostdlib
+ASFLAGS       # -march=rv32imac_zicsr -mabi=ilp32
+LDFLAGS       # -static -nostdlib -T linker.ld
 ```
 
-## 📁 Estructura de Archivos
+---
+
+## 🎓 Fundamentos Técnicos
+
+### Mecanismo de Scheduling
 
 ```
-/home/cerealkiller/Documentos/SC_Satelite_P1/
-├── main_riscv.c              # Punto de entrada (referencias de variables)
-├── scheduler_scenarios.s      # Scheduler y los 4 escenarios
-├── processes_sbi.s            # Procesos P1, P2, P3
-├── kernel_main.s              # Kernel en assembly
-├── Makefile                   # Sistema de build
-├── memory_map.h               # Mapa de memoria
-├── tests/                     # Archivos de prueba
-└── Processes/                 # Implementaciones originales de procesos
+Quantum = 10,000 ciclos de CPU
+
+Ciclo 0:        P1 ejecuta
+Ciclo 10,000:   ⚡ TIMER INTERRUPT
+                Context Save (32 registros + PC + SP)
+                Scheduler selecciona siguiente
+                Context Restore
+                MRET → P2 ejecuta
+
+Ciclo 20,000:   ⚡ TIMER INTERRUPT
+                Context Save
+                Scheduler selecciona siguiente
+                Context Restore
+                MRET → P3 ejecuta
+
+Ciclo 30,000:   ⚡ TIMER INTERRUPT
+                Context Save
+                Scheduler selecciona siguiente
+                Context Restore
+                MRET → P1 ejecuta (vuelve al inicio)
 ```
+
+### Sincronización Entre Procesos
+
+**Sin locks explícitos** - Sincronización por variables compartidas:
+
+```
+P1: cooling_flag ← (temp > 90) ? 1 : 0   [ESCRIBE]
+                ↓
+P2: if (cooling_flag == 1) print("ON")   [LEE]
+```
+
+**Memory barriers** implementados mediante:
+- Volatile loads/stores en memoria
+- Context switches que actúan como synchronization points
+
+---
+
+## 🧪 Validación y Testing
+
+### Verificar Compilación Correcta
+
+```bash
+# Ver símbolos del ELF
+riscv32-linux-gnu-nm satelite.elf | grep -E "process|scheduler"
+
+# Ver secciones
+riscv32-linux-gnu-objdump -h satelite.elf
+
+# Desensamblado completo
+riscv32-linux-gnu-objdump -D satelite.elf > satelite.dump
+```
+
+### Emulación en C (Alternativa)
+
+Para testing rápido sin QEMU:
+
+```bash
+# Compilar emulador C
+make interactive
+
+# Ejecutar en modo automático
+echo -e '1\n1' | ./satelite_interactive
+
+# Ejecutar interactivamente
+./satelite_interactive
+```
+
+---
+
+## 📈 Rendimiento Esperado
+
+### Métricas por Escenario (10,000 ciclos/quantum)
+
+```
+ESCENARIO 1 (P1→P2→P3):
+  P1:     300 iteraciones × 33 ciclos/iteración ≈ 9,900 ciclos
+  P2:     100 chequeos × 98 ciclos/chequeo ≈ 9,800 ciclos
+  P3:     100 monitores × 95 ciclos/monitor ≈ 9,500 ciclos
+  Total:  ~3,000 ms (3 segundos de ejecución)
+
+ESCENARIO 4 (Con Syscalls):
+  Overhead de ECALL/dispatcher ≈ 5-10%
+  Tiempo total: ~3,150 ms (3.15 segundos)
+```
+
+---
 
 ## 🐛 Troubleshooting
 
-### Error: "satelite.elf not found"
+### Problema: "riscv32-linux-gnu-gcc: not found"
+
+**Solución:**
 ```bash
-# Asegurate de compilar primero
-make SCENARIO=1 baremetal
+# Verificar instalación
+which riscv32-linux-gnu-gcc
+
+# Si no existe, instalar
+sudo apt-get install gcc-riscv32-linux-gnu binutils-riscv32-linux-gnu
+
+# O usar path explícito en Makefile
+RISCV_PREFIX = /usr/bin/riscv32-linux-gnu-
 ```
 
-### QEMU se queda colgado
+### Problema: "qemu-system-riscv32: not found"
+
+**Solución:**
 ```bash
-# Usar timeout para evitar que se cuelgue indefinidamente
-timeout 5 qemu-system-riscv32 -machine virt -nographic -bios default -kernel satelite.elf
+# Instalar QEMU
+sudo apt-get install qemu-system-riscv32
 
-# O presionar Ctrl+C manualmente
+# Verificar
+which qemu-system-riscv32
 ```
 
-### Compilación falla
+### Problema: Timeout durante ejecución
+
+**Causas posibles:**
+- Timeout muy corto (usar `timeout 3` mínimo)
+- Ciclo infinito en algún proceso
+- Memoria insuficiente (usar `-m 128M`)
+
+**Solución:**
 ```bash
-# Limpiar y reintentar
-make clean
-make SCENARIO=1 baremetal
-
-# Verificar que riscv32-linux-gnu-as esté disponible
-which riscv32-linux-gnu-as
+# Aumentar timeout a 5 segundos
+timeout 5 qemu-system-riscv32 -machine virt -m 128M -serial stdio \
+  -display none -kernel satelite.elf -monitor none
 ```
 
-## 📈 Comparación de Escenarios
+### Problema: Output vacío o incompleto
 
-Para comparar el rendimiento de los 4 escenarios:
+**Causas:**
+- Buffer UART no flushed
+- Ejecución terminó antes de esperado
 
+**Solución:**
 ```bash
-# Script para ejecutar todos
-for s in 1 2 3 4; do
-    echo "=== Scenario $s ==="
-    make SCENARIO=$s baremetal > /dev/null 2>&1
-    timeout 5 qemu-system-riscv32 -machine virt -nographic -bios default -kernel satelite.elf 2>&1 | grep "Tiempo Total"
-    echo ""
-done
-```
+# Ver el output guardado
+cat /tmp/riscv_output.txt | head -50
 
-## 📝 Notas
-
-- El sistema usa **rdcycle** para medir ciclos de CPU
-- Cada proceso se ejecuta de forma **preemptiva** (yield después de cada operación)
-- Se procesan **100 temperaturas** en cada escenario
-- El tiempo mostrado es en ciclos hexadecimales, no en tiempo real
-
----
-
-**Última actualización:** 26 de noviembre de 2025
-- ✅ **Sin syscalls**: Interrupciones puras de hardware (MTIMECMP/MTIME)
-- ✅ **Terminación WFI**: Los procesos entran en `wfi` cuando terminan su trabajo
-- ✅ **3 escenarios**: Diferentes órdenes de ejecución de procesos
-- ✅ **Emulación en C**: `wrapper_interactive.c` para comparación y testing
-
----
-
-## 🎯 Problemas Resueltos
-
-| # | Problema | Estado | Descripción |
-|---|----------|--------|-------------|
-| 1 | Interrupciones de Timer | ✅ Completado | Multitarea preemptiva con quantum de 10,000 ciclos |
-| 2 | Debugging con GDB | ✅ Completado | GDB automation + backtrace con execinfo.h |
-| 3 | Extracción de Ciclos | ✅ Completado | rdcycle + 13 métricas (PC, SP, interrupciones) |
-| 4 | Métricas Avanzadas | ✅ Completado | Tiempo, memoria, CPU, page faults, I/O |
-| 5 | Memory Profiling | ✅ Completado | Snapshots, leak detection, trend analysis |
-| 6 | Performance Profiling | ✅ Completado | gprof, perf, hotspots, optimizaciones |
-
-**Total de líneas agregadas**: ~515 líneas en `wrapper_interactive.c` (de 624 a 1139 líneas)
-
----
-
-### ✅ Problema 1: Interrupciones de Timer
-
-**Objetivo**: Implementar multitarea preemptiva con quantum fijo de 10,000 ciclos.
-
-**Solución**:
-- **Archivo**: `trap_handler.s` (307 líneas)
-- **CSRs configurados**: `mtvec`, `mie`, `mstatus`, `mepc`, `mcause`, `mscratch`
-- **Direcciones MMIO**:
-  - MTIME: `0x0200BFF8` (contador de ciclos)
-  - MTIMECMP: `0x02004000` (comparador para interrupciones)
-- **Context switch**: Guarda/restaura 32 registros + PC + SP en PCB de cada proceso
-- **Scheduler**: Round-robin entre procesos activos
-
-**Archivos relacionados**:
-```
-trap_handler.s       → Handler completo de interrupciones
-start.s              → Configuración inicial de CSRs
-scheduler.s          → Selección de primer proceso
-Processes/*.s        → Procesos con lógica WFI
-```
-
-**Documentación**: Ver `trap_handler.s` para detalles técnicos.
-
----
-
-### ✅ Problema 2: Debugging con GDB
-
-**Objetivo**: Implementar herramientas de debugging para análisis de ejecución.
-
-**Solución**:
-- **GDB Script**: `debug_gdb.sh` (script bash ejecutable)
-  - Lanza QEMU con `-s -S` (puerto 1234, pausa inicial)
-  - Conecta GDB automáticamente
-  - Establece breakpoints en puntos clave
-  - Muestra CSRs (mtvec, mstatus, mepc, mcause)
-  
-- **Backtrace en C**: `wrapper_interactive.c`
-  - Usa `<execinfo.h>` para capturar stack traces
-  - Signal handlers para SIGINT (Ctrl+C), SIGSEGV, SIGTERM
-  - Función `print_backtrace()` con contexto del sistema
-  - Compilado con `-rdynamic` para símbolos completos
-
-**Archivos relacionados**:
-```
-debug_gdb.sh         → Script automatizado de debugging
-GDB_GUIDE.md         → Guía completa de uso de GDB (15+ secciones)
-BACKTRACE_DEMO.md    → Demostración de backtrace en C
-wrapper_interactive.c → Emulación con backtrace integrado
-```
-
-**Uso rápido**:
-```bash
-# Debugging RISC-V con GDB
-$ ./debug_gdb.sh
-
-# Emulación C con backtrace
-$ make interactive && ./satelite_interactive
-# (Presiona Ctrl+C durante la ejecución para ver el stack trace)
-```
-
-**Documentación**:
-- `GDB_GUIDE.md`: Guía exhaustiva de debugging
-- `BACKTRACE_DEMO.md`: Ejemplos prácticos de backtrace
-
----
-
-### ✅ Problema 3: Extracción de Ciclos (rdcycle)
-
-**Objetivo**: Extraer métricas de ciclos, PC, SP e interrupciones de cada proceso.
-
-**Solución**:
-- **Variables globales** (13 nuevas en `memory_map.h/c`):
-  - `cycle_count_p1/p2/p3` (unsigned long long): Contador de ciclos
-  - `last_pc_p1/p2/p3` (unsigned int): Último Program Counter
-  - `last_sp_p1/p2/p3` (unsigned int): Último Stack Pointer
-  - `interrupt_count_p1/p2/p3` (unsigned int): Total de interrupciones
-  - `last_mcause` (unsigned int): Última causa de interrupción
-
-- **Instrumentación RISC-V**:
-  - `rdcycle/rdcycleh` al inicio de cada proceso (Process1/2/3.s)
-  - `trap_handler.s` captura PC, SP y mcause automáticamente
-  - Incremento de `interrupt_count_pX` en cada interrupción
-
-- **Extracción de métricas**:
-  - **Con GDB**: `./debug_gdb.sh` → comando `show_metrics`
-  - **Sin GDB**: `./inspect_metrics.sh` (muestra direcciones)
-  - **En C**: `print_metrics()` con estimación de ciclos
-
-**Archivos modificados**:
-```
-memory_map.h              → +13 variables
-memory_map.c              → +13 inicializaciones
-trap_handler.s            → +95 líneas (captura de métricas)
-Processes/Process1.s      → +5 líneas (rdcycle)
-Processes/Process2.s      → +5 líneas (rdcycle)
-Processes/Process3.s      → +5 líneas (rdcycle)
-wrapper_interactive.c     → print_metrics()
-debug_gdb.sh              → comando show_metrics
-inspect_metrics.sh        → script nuevo
-```
-
-**Uso**:
-
-1. **Debugging con GDB** (RISC-V):
-```bash
-$ ./debug_gdb.sh
-(gdb) show_metrics
-# Muestra todas las métricas en tiempo real
-```
-
-2. **Inspección rápida**:
-```bash
-$ ./inspect_metrics.sh
-# Muestra direcciones de memoria de todas las métricas
-```
-
-3. **Emulación C**:
-```bash
-$ make run
-# Al finalizar:
-
-╔═══════════════════════════════════════════════════════════╗
-║   MÉTRICAS DE DEBUGGING (Problema 3)                      ║
-╚═══════════════════════════════════════════════════════════╝
-
-⏱️  TIMING:
-  Process1: 0.123456 segundos
-  Process2: 0.088432 segundos
-  Process3: 0.060823 segundos
-
-🔄 ESTIMACIÓN DE CICLOS (basado en tiempo real):
-  Process1: ~1234560 ciclos
-  Process2: ~884320 ciclos
-  Process3: ~608230 ciclos
-  (Asumiendo 10 MHz de clock)
+# Usar strace para debug
+strace -e write timeout 3 qemu-system-riscv32 -machine virt -m 128M \
+  -kernel satelite.elf 2>&1 | grep "START\|FINISH"
 ```
 
 ---
 
-### ✅ Problema 4: Métricas de Tiempo, Memoria y CPU
+## 📚 Estructura de Código
 
-**Objetivo**: Recopilar métricas avanzadas de rendimiento del sistema.
+### Flujo de Ejecución Simplificado
 
-**Solución**:
-- **Tiempo**: 
-  - `clock_gettime(CLOCK_MONOTONIC)` para tiempo wall-clock
-  - `getrusage()` para tiempo de usuario y sistema
-  - Cálculo de eficiencia de CPU
-  
-- **Memoria**: 
-  - `getrusage()` → `ru_maxrss` (RSS máximo)
-  - `/proc/self/status` → VmPeak, VmSize, VmRSS, VmData, VmStk, VmExe
-  - `mallinfo2()` para estadísticas del heap (glibc >= 2.33)
-  
-- **CPU**: 
-  - `ru_utime` (tiempo de usuario)
-  - `ru_stime` (tiempo de sistema)
-  - Porcentaje de uso de CPU
-  
-- **Adicional**:
-  - Page faults (minor y major)
-  - Context switches (voluntarios e involuntarios)
-  - Operaciones de I/O (block input/output)
-
-**Archivos modificados**:
 ```
-wrapper_interactive.c  → +300 líneas de métricas
-  - print_advanced_metrics()
-  - read_proc_status()
-  - format_bytes()
-  - struct system_metrics
+_start (start.s)
+  │
+  ├─ Configurar CSRs (mtvec, mstatus, mie)
+  ├─ Inicializar stacks (P1, P2, P3)
+  │
+  ▼
+kernel_start (kernel.c)
+  │
+  ├─ temps_ptr = dirección del array
+  ├─ temps_len = 100
+  ├─ Imprimir "KERNEL:S"
+  │
+  ▼
+scheduler_start (scheduler_scenarios.s)
+  │
+  ├─ Seleccionar escenario (S1-S4)
+  ├─ Cargar contexto del proceso inicial
+  │
+  ▼
+MRET → Ejecución de Procesos
+  │
+  ├─ P1: Lee temperatura, escribe cooling_flag
+  ├─ P2: Lee cooling_flag, registra estado
+  ├─ P3: Chequea buffer UART
+  │
+  ▼ (Cada 10,000 ciclos)
+TIMER INTERRUPT → trap_handler
+  │
+  ├─ Context Save (guardar registros)
+  ├─ scheduler_interrupt_handler (seleccionar siguiente)
+  ├─ Context Restore (cargar registros)
+  │
+  ▼
+MRET → Continuar con siguiente proceso
 ```
-
-**Uso**:
-```bash
-$ make run
-# Al finalizar la simulación, verás:
-╔═══════════════════════════════════════════════════════════╗
-║   MÉTRICAS AVANZADAS (Problema 4)                         ║
-╚═══════════════════════════════════════════════════════════╝
-
-⏰ TIEMPO DE EJECUCIÓN:
-  Tiempo total (wall-clock): 1.234567 segundos
-  Tiempo total (milisegundos): 1234.57 ms
-
-🖥️  TIEMPO DE CPU:
-  Tiempo de usuario: 1.200000 segundos (97.20%)
-  Tiempo de sistema: 0.034567 segundos (2.80%)
-  Tiempo total CPU: 1.234567 segundos (100.00%)
-
-💾 MEMORIA:
-  RSS máximo: 4.56 MB
-  VmPeak: 12.34 MB
-  VmSize: 11.89 MB
-  VmRSS: 4.56 MB
-  VmData: 2.10 MB
-  VmStk: 136.00 KB
-  VmExe: 36.00 KB
-
-📄 PAGE FAULTS:
-  Minor page faults: 523
-  Major page faults: 0
-  Total page faults: 523
-
-🔄 CONTEXT SWITCHES:
-  Voluntarios: 45
-  Involuntarios: 12
-  Total: 57
-
-💿 OPERACIONES DE I/O:
-  Block input operations: 0
-  Block output operations: 8
-```
-
-**Documentación**: Ver `wrapper_interactive.c` líneas 80-300 para detalles de implementación.
 
 ---
 
-### ✅ Problema 5: Memory Profiling
+## 📝 Variables Globales Importantes
 
-**Objetivo**: Análisis continuo y detallado del uso de memoria durante la ejecución.
-
-**Solución**:
-- **Memory Snapshots**: Captura periódica (cada 10 iteraciones)
-  - VmSize, VmRSS, VmData, VmStk
-  - Heap allocated/free (mallinfo2)
-  - Timestamp y contexto (temps_index)
-  
-- **Análisis de Tendencias**:
-  - Detección de memory leaks (crecimiento constante)
-  - Detección de picos de memoria (>50% sobre promedio)
-  - Estadísticas: min, max, avg, rango
-  
-- **Visualización**:
-  - Tabla de evolución temporal
-  - Gráfico ASCII de tendencias
-  - Patrones de uso identificados
-  
-- **Recomendaciones automáticas**:
-  - Posibles memory leaks
-  - Optimizaciones sugeridas
-  - Mejoras en gestión de memoria
-
-**Implementación**:
 ```c
-// Estructura de snapshot
-typedef struct {
-    struct timespec timestamp;
-    long vm_size, vm_rss, vm_data, vm_stk;
-    size_t heap_allocated, heap_free;
-    int temps_processed;  // Contexto
-} MemorySnapshot;
+// Array de temperaturas (100 valores)
+int *temps_ptr;
 
-// Hasta 100 snapshots durante ejecución
-MemorySnapshot memory_snapshots[100];
+// Longitud del array
+int temps_len;
 
-// Captura automática cada 10 iteraciones
-capture_memory_snapshot();
-```
+// Índice actual (0-99)
+int temps_index;
 
-**Archivos modificados**:
-```
-wrapper_interactive.c  → +318 líneas
-  - capture_memory_snapshot()
-  - analyze_memory_trend()
-  - print_memory_profiling()
-  - estimate_stack_usage()
-```
+// Flag de cooling (0 = OFF, 1 = ON)
+unsigned int cooling_flag;
 
-**Uso**:
-```bash
-$ make run
-# Selecciona escenario y archivo
-# Durante la ejecución se capturan snapshots automáticamente
-# Al finalizar:
+// Estado del cooler
+unsigned int cooler_state;
 
-╔═══════════════════════════════════════════════════════════╗
-║   MEMORY PROFILING (Problema 5)                           ║
-╚═══════════════════════════════════════════════════════════╝
+// Ciclos leídos por rdcycle
+unsigned long long cycle_count_p1;
+unsigned long long cycle_count_p2;
+unsigned long long cycle_count_p3;
 
-📸 SNAPSHOTS CAPTURADOS: 12
-
-📊 EVOLUCIÓN DE MEMORIA:
-Snap   Tiempo(s)    VmRSS      VmSize     VmData     VmStk      Heap      
-───────────────────────────────────────────────────────────────────────────
-0      0.000        4560 KB    11890 KB   2100 KB    136 KB     128 KB    
-1      0.100        4572 KB    11890 KB   2100 KB    136 KB     132 KB    
-2      0.200        4580 KB    11890 KB   2100 KB    136 KB     136 KB    
-...
-
-📈 ESTADÍSTICAS DE RSS:
-  Mínimo: 4560 KB
-  Máximo: 4620 KB
-  Promedio: 4585 KB
-  Rango: 60 KB
-
-📈 ANÁLISIS DE TENDENCIA:
-  RSS inicial: 4560 KB → final: 4600 KB (Δ +40 KB)
-  Heap inicial: 131072 B → final: 139264 B (Δ +8192 B)
-  ✓ Uso de memoria estable
-
-🔍 DETECCIÓN DE PATRONES:
-  ✓ Uso de memoria estable (crecimiento: 15.0%)
-  ✓ Sin picos anormales de memoria
-
-💡 RECOMENDACIONES:
-  ✓ Gestión de memoria correcta
-  ✓ Sin memory leaks detectados
+// Contador de interrupciones
+unsigned int interrupt_count_p1;
 ```
 
 ---
 
-### ✅ Problema 6: Profiling de Rendimiento
+## 🔐 Arquitectura de Seguridad
 
-**Objetivo**: Análisis de performance con herramientas de profiling (gprof, perf).
+### Modo de Ejecución
 
-**Solución**:
-- **Makefile targets**:
-  - `make profile`: Compila con flag `-pg` para gprof
-  - `make run-profile`: Ejecuta y genera `gprof_report.txt`
-  - `make profile-top`: Muestra top 10 funciones rápidamente
-  - `make clean-profile`: Limpia archivos de profiling
+- **Machine Mode (M-mode)**: Scheduler, trap handler, interrupts
+**Nota**: Actualmente todos los procesos corren en M-mode. En un OS real, correrían en U-mode.
 
-- **Script de análisis**: `performance_analysis.sh`
-  - Detección automática de herramientas (gprof, perf, time)
-  - Análisis con `/usr/bin/time -v` (métricas detalladas)
-  - Profiling con gprof (flat profile + call graph)
-  - Profiling con perf (eventos hardware, si disponible)
-  - Comparación RISC-V vs C (tamaño binario, LOC)
-
-- **Métricas integradas** en `wrapper_interactive.c`:
-  - **Hotspots**: Identificación de funciones críticas por tiempo
-  - **CPU vs I/O**: Análisis de utilización (CPU-bound vs I/O-bound)
-  - **Context switches**: Voluntarios vs involuntarios
-  - **Comparación arquitecturas**: RISC-V vs x86_64
-  - **Recomendaciones**: Sugerencias de optimización automáticas
-
-**Archivos modificados**:
-```
-Makefile                      → +30 líneas (targets de profiling)
-wrapper_interactive.c         → +225 líneas (print_performance_profiling)
-performance_analysis.sh       → script nuevo (análisis multi-herramienta)
-```
-
-**Uso**:
-
-1. **Profiling básico con gprof**:
-```bash
-$ make run-profile
-# Genera automáticamente gprof_report.txt
-$ cat gprof_report.txt  # Ver reporte completo
-```
-
-2. **Análisis completo**:
-```bash
-$ ./performance_analysis.sh
-# Ejecuta análisis con todas las herramientas disponibles
-# Genera: time_report.txt, gprof_report.txt, perf.data
-```
-
-3. **Ver profiling en ejecución normal**:
-```bash
-$ make run
-# Al finalizar, se muestra automáticamente:
-
-╔═══════════════════════════════════════════════════════════╗
-║   PERFORMANCE PROFILING (Problema 6)                      ║
-╚═══════════════════════════════════════════════════════════╝
-
-🔥 HOTSPOTS DETECTADOS:
-────────────────────────────────────────────────────────────
-  Process1 (Temperatura):  45.23% (0.123456 s)
-  Process2 (Cooler):       32.45% (0.088432 s)
-  Process3 (UART):         22.32% (0.060823 s)
-
-  ⚠️  HOTSPOT CRÍTICO: Process1 (45.23% del tiempo total)
-
-⚙️  ANÁLISIS CPU vs I/O:
-────────────────────────────────────────────────────────────
-  User time:      0.250000 s
-  System time:    0.022000 s
-  CPU time:       0.272000 s
-  Wall time:      0.272711 s
-  CPU utilization: 99.74%
-
-  ℹ️  Alto uso de CPU: Programa CPU-bound
-
-🔄 CONTEXT SWITCHES:
-────────────────────────────────────────────────────────────
-  Voluntarios:     234
-  Involuntarios:   12
-  Total:           246
-  Rate:            902.15 switches/seg
-
-🔬 COMPARACIÓN RISC-V vs C:
-────────────────────────────────────────────────────────────
-  Arquitectura C:      x86_64 (nativo)
-  Arquitectura RISC-V: rv32imac_zicsr (emulado)
-
-  Ventajas de C:
-    ✓ Ejecución nativa (sin overhead de emulación)
-    ✓ Compilador optimizado para x86_64
-    ✓ Mejor integración con profiling tools
-
-  Ventajas de RISC-V:
-    ✓ Código más compacto (~13KB)
-    ✓ ISA simplificada y predecible
-    ✓ Menor consumo de memoria
-    ✓ Ideal para sistemas embebidos
-
-🛠️  PROFILING AVANZADO:
-────────────────────────────────────────────────────────────
-  Para análisis con gprof:
-    make profile             # Compilar con -pg
-    make run-profile         # Ejecutar y generar reporte
-    make profile-top         # Ver top 10 funciones
-
-  Para análisis completo:
-    ./performance_analysis.sh  # Multi-herramienta
-
-  Para profiling de RISC-V:
-    qemu-system-riscv32 -icount shift=0 ...  # Contar inst.
-    qemu-system-riscv32 -d in_asm ...        # Ver inst.
-
-💡 RECOMENDACIONES:
-────────────────────────────────────────────────────────────
-  • Process1 consume 45% del tiempo
-    → Optimizar lectura de temperaturas
-    → Considerar buffering de datos
-```
-
-**Comparación de herramientas**:
-
-| Herramienta | Propósito | Ventajas | Limitaciones |
-|-------------|-----------|----------|--------------|
-| **gprof** | Profiling de funciones | Portable, fácil uso | Solo tiempo CPU, no I/O |
-| **perf** | Eventos hardware | Muy preciso, bajo overhead | Requiere permisos |
-| **time** | Métricas globales | Siempre disponible | No detalla funciones |
-| **QEMU -icount** | Conteo instrucciones | Determinista para RISC-V | Solo emulación |
-
----
-
-## 🏗️ Arquitectura
-
-### Esquema de Interrupciones
+### Protección de Contexto
 
 ```
-┌─────────────┐
-│ Process 1/2/3│ ← Ejecutando código de proceso
-└──────┬──────┘
-       │
-       ▼ Timer interrupt cada 10,000 ciclos
-┌──────────────────┐
-│  trap_handler    │ ← Entry point (mtvec apunta aquí)
-│  - Valida mcause │
-│  - Guarda ctx    │
-│  - Setup timer   │
-│  - Scheduler     │
-│  - Restaura ctx  │
-└──────┬───────────┘
-       │
-       ▼ mret (vuelve a proceso)
-┌─────────────┐
-│ Process 1/2/3│ ← Continúa ejecución (posiblemente otro proceso)
-└─────────────┘
-```
-
-### Memory Map
-
-| Dirección | Descripción |
-|-----------|-------------|
-| `0x80000000` | Código (`.text`) |
-| `0x80001000` | Datos (`.data`) |
-| `0x80002000` | BSS (`.bss`) - Variables globales |
-| `0x80010000` | Stack del kernel |
-| `0x80020000` | Stack Process 1 |
-| `0x80030000` | Stack Process 2 |
-| `0x80040000` | Stack Process 3 |
-| `0x0200BFF8` | MTIME (MMIO - timer counter) |
-| `0x02004000` | MTIMECMP (MMIO - timer compare) |
-
----
-
-## 🔧 Compilación y Ejecución
-
-### Prerrequisitos
-
-```bash
-# Toolchain RISC-V
-$ sudo apt-get install gcc-riscv64-unknown-elf gdb-multiarch qemu-system-misc
-
-# O usar el toolchain de 32 bits:
-$ sudo apt-get install gcc-riscv32-linux-gnu
-```
-
-### Compilar RISC-V Binary
-
-```bash
-# Compilar satelite.elf
-$ make
-
-# Ver desensamblado
-$ make dump
-
-# Ejecutar en QEMU
-$ make sim
-```
-
-### Compilar Emulación en C
-
-```bash
-# Compilar wrapper interactivo
-$ make interactive
-
-# Ejecutar
-$ ./satelite_interactive
-# Selecciona escenario (1-4)
-# Selecciona archivo de temperaturas (1-4)
+Context Save (Interrupt):
+  ✓ 32 registros guardados en PCB
+  ✓ PC guardado en mepc
+  ✓ SP guardado
+  
+Context Restore (Scheduler):
+  ✓ 32 registros restaurados
+  ✓ PC restaurado mediante MRET
+  ✓ SP restaurado
 ```
 
 ---
 
-## 🐛 Debugging
-
-### Método 1: Script Automatizado (Recomendado)
-
-```bash
-$ ./debug_gdb.sh
-```
-
-Esto hace:
-1. Inicia QEMU con `-s -S` (puerto 1234, pausa)
-2. Conecta GDB automáticamente
-3. Establece breakpoints en:
-   - `trap_handler` (interrupciones)
-   - `process1_start`, `process2_start`, `process3_start`
-   - `P1_idle`, `P2_done`, `P3_done` (terminación)
-4. Muestra CSRs: mtvec, mstatus, mepc, mcause
-5. Proporciona comandos útiles en pantalla
-
-### Método 2: Manual
-
-```bash
-# Terminal 1: Iniciar QEMU
-$ qemu-system-riscv32 -machine virt -nographic -bios none \
-  -kernel satelite.elf -s -S
-
-# Terminal 2: Conectar GDB
-$ riscv32-linux-gnu-gdb satelite.elf
-(gdb) target remote :1234
-(gdb) break trap_handler
-(gdb) continue
-```
-
-### Comandos Útiles de GDB
-
-```gdb
-# Ver registros
-(gdb) info registers
-
-# Ver CSRs
-(gdb) print/x $mstatus
-(gdb) print/x $mepc
-(gdb) print/x $mcause
-
-# Ver memoria
-(gdb) x/32xw 0x0200BFF8    # MTIME
-(gdb) x/2xw 0x02004000     # MTIMECMP
-
-# Ver PCB de procesos
-(gdb) x/34xw &pcb_p1       # 32 regs + PC + SP
-(gdb) print current_process_id
-
-# Backtrace
-(gdb) bt
-```
-
-### Backtrace en Emulación C
-
-```bash
-$ ./satelite_interactive
-# Durante la ejecución, presiona Ctrl+C:
-^C
-
-╔═══════════════════════════════════════════════════════════╗
-║   SEÑAL RECIBIDA: 2 (INTERRUPT (Ctrl+C))
-╚═══════════════════════════════════════════════════════════╝
-
-┌────────────────────────────────────────────────────────┐
-│ BACKTRACE: Signal Handler
-└────────────────────────────────────────────────────────┘
-Obtained 6 stack frames:
-  [0] ./satelite_interactive(print_backtrace+0x45) [0x...]
-  [1] ./satelite_interactive(signal_handler+0x89) [0x...]
-  [2] /lib/x86_64-linux-gnu/libc.so.6(+0x42520) [0x...]
-  ...
-```
-
----
-
-## 📁 Estructura del Proyecto
-
-```
-SC_Satelite_P1/
-├── README.md                    ← Este archivo
-├── GDB_GUIDE.md                 ← Guía completa de GDB (Problema 2)
-├── BACKTRACE_DEMO.md            ← Demo de backtrace en C (Problema 2)
-├── debug_gdb.sh                 ← Script de debugging (Problema 2)
-│
-├── Makefile                     ← Build system
-├── linker.ld                    ← Linker script (memory layout)
-│
-├── start.s                      ← Entry point + CSR setup
-├── scheduler.s                  ← Selección de primer proceso
-├── trap_handler.s               ← Interrupt handler + context switch (Problema 1)
-│
-├── main_riscv.c                 ← Main loop (llama a scheduler)
-├── kernel.c / kernel.h          ← Funciones de kernel
-├── memory_map.c / memory_map.h  ← Variables globales
-├── stacks.c / stacks.h          ← Inicialización de stacks
-│
-├── Processes/
-│   ├── Process1_temp.s          ← Lectura de temperatura
-│   ├── Process2_cooler.s        ← Control de enfriamiento
-│   └── Process3_uart.s          ← Transmisión UART
-│
-├── wrapper_interactive.c        ← Emulación en C con backtrace (Problema 2)
-│
-├── tests/
-│   ├── test1.txt                ← Temperaturas de prueba
-│   ├── test2.txt
-│   ├── test3.txt
-│   └── test4.txt
-│
-└── satelite.elf                 ← Binario RISC-V generado
-```
-
----
-
-## 📚 Documentación Adicional
-
-### Problema 1 (Interrupciones)
-
-- **`trap_handler.s`**: Código fuente con comentarios extensos
-  - Sección 1: Entry point y validación de mcause
-  - Sección 2: Context save (32 regs + PC + SP)
-  - Sección 3: Timer setup (MTIMECMP + quantum)
-  - Sección 4: Scheduler (round-robin)
-  - Sección 5: Context restore
-  - Sección 6: mret
-
-### Problema 2 (Debugging)
-
-- **`GDB_GUIDE.md`**: Guía completa (70+ secciones)
-  - Quick start (script vs manual)
-  - Breakpoints (15+ ubicaciones sugeridas)
-  - Inspección (registros, CSRs, memoria, variables)
-  - Debugging de interrupciones (MTIME/MTIMECMP)
-  - Análisis de context switch (PCB inspection)
-  - 5 ejemplos prácticos
-  - Scripting avanzado
-  - Troubleshooting
-
-- **`BACKTRACE_DEMO.md`**: Demostración práctica
-  - ¿Qué es el backtrace?
-  - 3 escenarios (normal, Ctrl+C, SIGSEGV)
-  - Comparación C vs RISC-V
-  - 4 ejercicios prácticos
-  - Limitaciones y alternativas
-
-### Archivos de Código
-
-Cada archivo `.s` y `.c` tiene comentarios detallados explicando:
-- Propósito del archivo
-- Registros utilizados
-- Variables accedidas
-- Algoritmo implementado
-- Notas de sincronización
-
----
-
-## 🚀 Quick Start
-
-### 1. Compilar todo
-
-```bash
-$ make clean && make all
-```
-
-### 2. Ejecutar en QEMU (RISC-V)
-
-```bash
-$ make sim
-```
-
-### 3. Ejecutar emulación (C)
-
-```bash
-$ make run
-# Selecciona escenario 1, archivo 1
-```
-
-### 4. Debugging con GDB
-
-```bash
-$ ./debug_gdb.sh
-# GDB se conecta automáticamente
-# Breakpoints ya establecidos
-# Usa 'continue' para ejecutar
-```
-
-### 5. Probar backtrace en C
-
-```bash
-$ ./satelite_interactive
-# Durante la ejecución, presiona Ctrl+C
-# Verás el stack trace completo
-```
-
----
-
-## 🧪 Testing
-
-### Tests Incluidos
-
-- **test1.txt**: Órbita LEO completa (100 muestras)
-- **test2.txt**: Ciclo día/noche extremo (80 muestras)
-- **test3.txt**: Anomalía térmica (50 muestras)
-- **test4.txt**: Condiciones normales (60 muestras)
-
-### Escenarios de Scheduler
-
-- **Escenario 1**: P1 → P2 → P3 (baseline)
-- **Escenario 2**: P1 → P3 → P2
-- **Escenario 3**: P2 → P1 → P3
-- **Escenario 4**: Syscalls (placeholder)
-
----
-
-## 📊 Progreso
-
-| Problema | Estado | Archivos |
-|----------|--------|----------|
-| **1. Interrupciones** | ✅ Completo | `trap_handler.s`, `start.s`, `Processes/*.s` |
-| **2. Debugging GDB** | ✅ Completo | `debug_gdb.sh`, `GDB_GUIDE.md`, `BACKTRACE_DEMO.md` |
-| **3. rdcycle + Métricas PC/SP** | ✅ Completo | `Processes/*.s`, `trap_handler.s`, `memory_map.c`, `inspect_metrics.sh` |
-| **4. Métricas Tiempo/Memoria/CPU** | ✅ Completo | `wrapper_interactive.c` (+300 líneas) |
-| **5. Memory Profiling** | ✅ Completo | `wrapper_interactive.c` (+318 líneas, snapshots automáticos) |
-| **6. Performance Profiling** | ⏳ Pendiente | - |
-
----
-
-## 🔗 Referencias
-
-- [RISC-V ISA Spec](https://riscv.org/technical/specifications/)
-- [RISC-V Privileged Spec](https://github.com/riscv/riscv-isa-manual/releases/tag/Priv-v1.12)
-- [QEMU RISC-V Docs](https://www.qemu.org/docs/master/system/target-riscv.html)
-- [GDB Manual](https://sourceware.org/gdb/documentation/)
-
----
-
-## 📝 Licencia
-
-Este proyecto es para fines educativos (Sistemas de Computadores).
-
----
-
-## 👤 Autor
-
-**cerealkiller** - Universidad [Tu Universidad]
-
----
-
-**¡Sistema funcionando con interrupciones de timer y debugging completo!** 🎉
